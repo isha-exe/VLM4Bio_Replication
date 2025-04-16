@@ -11,8 +11,8 @@ import requests
 from PIL import Image
 from transformers import BlipProcessor, BlipForQuestionAnswering
 
-DATASET_PATH = "Dataset/task1/10K" 
-RESULTS_DIR = "Dataset/task1/result" 
+DATASET_PATH = "/raid/gurukul/vlm4bio/easy_data/Easy" 
+RESULTS_DIR = "/raid/gurukul/vlm4bio/Dataset/task1/results_exp2" 
 
 import argparse
 parser = argparse.ArgumentParser()
@@ -149,6 +149,7 @@ writer = jsonlines.open(out_file_name, mode="w")
 
 #  Iterate Over Images
 for _, row in tqdm(df.iterrows(), total=len(df)):
+    
     image_path = os.path.join(IMAGE_FOLDER, row[image_column])
     print(image_path)
 
@@ -229,7 +230,7 @@ for _, row in tqdm(df.iterrows(), total=len(df)):
         question = instruction
         inputs = processor(image, question, return_tensors="pt").to("cuda:7", torch.float32)
 
-        out = model.generate(**inputs, max_new_tokens=15)
+        out = model.generate(**inputs, max_new_tokens=80)
         response = processor.decode(out[0], skip_special_tokens=True)
     elif "blip-vqa-capfilt-large" in model_name:
         processor = BlipProcessor.from_pretrained("Salesforce/blip-vqa-capfilt-large")
@@ -240,7 +241,7 @@ for _, row in tqdm(df.iterrows(), total=len(df)):
         question = instruction
         inputs = processor(image, question, return_tensors="pt").to("cuda:7")
 
-        out = model.generate(**inputs)
+        out = model.generate(**inputs, max_new_tokens=80)
         response = processor.decode(out[0], skip_special_tokens=True)
 
 
@@ -251,20 +252,29 @@ for _, row in tqdm(df.iterrows(), total=len(df)):
         import requests
         from transformers import AutoProcessor, LlavaForConditionalGeneration
 
-        prompt = instruction
-        prompt = "<image>\n" + prompt
-        url = image_path
-        image = Image.open(url).convert("RGB")
-        image.show()
-        print("past image show")
+        conversation = [
+        {
+            "role": "user",
+            "content": [
+                {"type": "image", "url": image_path},
+                {"type": "text", "text": instruction},
+            ],
+        },
+        ]
 
-        inputs = processor(images=image, text=prompt, return_tensors="pt").to(device)
+        inputs = processor.apply_chat_template(
+            conversation,
+            add_generation_prompt=True,
+            tokenize=True,
+            return_dict=True,
+            return_tensors="pt"
+        ).to(model.device, torch.float16)
 
         # Generate
-        generate_ids = model.generate(**inputs, max_new_tokens=15)
-        processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
-        response = processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
+        generate_ids = model.generate(**inputs, max_new_tokens=100)
+        response = processor.batch_decode(generate_ids, skip_special_tokens=True)
 
+        
 
     elif "Qwen2-VL-2B" in model_name:
     
@@ -323,7 +333,7 @@ for _, row in tqdm(df.iterrows(), total=len(df)):
         inputs = processor(text=[text], images=[image])
 
         # Generate
-        generate_ids = model.generate(torch.tensor(inputs.input_ids).to(device), max_new_tokens=30)
+        generate_ids = model.generate(torch.tensor(inputs.input_ids).to(device), max_new_tokens=80)
         processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
         response = processor.batch_decode(generate_ids, skip_special_tokens=True, clean_up_tokenization_spaces=False)[0]
 
